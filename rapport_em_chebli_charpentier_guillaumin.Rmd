@@ -1,0 +1,408 @@
+---
+title: "Exemple d'utilisation de l'algorithme EM dans le cadre de la génétique"
+author: "Lucie Guillaumin, Johann Charpentier et Mehdi Chebli"
+date: "04 novembre 2020"
+output:
+  pdf_document:
+    fig_caption: yes
+    number_sections: yes
+---
+
+```{r, echo=FALSE, warning = FALSE}
+library(ggplot2)
+```
+
+#Introdution
+Ce rapport porte sur l’article (Martin et al. 2010) : c'est un exemple d'utilisation de l'algorithme EM dans le cadre de la génétique.  
+Nous allons donc considérer un `génotype`, c'est un ensemble ou partie du matériel génétique (ADN) d'un individu. Parmi plusieurs séquences d'ADN, nous allons observer un locus à une position donnée que l'on aura choisie.
+Dans ce locus nous allons nous intéresser à l'ADN A,T,G ou C qui est le plus présent dans notre locus.
+On appellera cet ADN le nucléotide `R` pour le désigner comme le nucléotide de référence.
+En ce qui concerne l'ADN de notre locus, qui ne fait pas partie de nos nucléotides de référence `R`, nous l'appellerons le nucléotide `V` pour désigner comme un nucléotide variant.
+
+On sélectionnera deux nucléotides dans notre locus et nous regardons à quelle appelation (calling) il appartient.
+Pour résumer nous pouvons avoir :  
+
+- `RV` : hétérozygote  
+- `RR` : homorozygote référent  
+- `VV` : homorozygote variant  
+
+Pour faciliter la compréhension de l'étude nous allons définir ce qu'est un génotype calling, NGS, et un SNP.  
+  
+- Un `génotype calling` est un algorithme qui cible des allèles dans les génotypes qui permettent de ciblé les intensités de fluorescence et distingue les génotypes de la manière suivante :  
+  
+     Homozygous allele 1  
+     Heterozygous  
+     Homozygous allele 2  
+
+- `NGS` signifie "séquencage de nouvelle génération" une expression désignant une variété de techniques de séquençage génétique, qui apportent des améliorations au processus initial de séquençage de Sanger. L'intérêt d'utilisé une telle méthode est de pouvoir réduire les coûts et la durée du séquençage de l’ADN et de l’ARN. Il permet également de réaliser le séquençage sur de plus petits échantillons. Le temps et l’effort requis pour préparer les échantillons destinés au séquençage sont donc également réduits en comparaison avec le séquençage de Sanger.  
+     
+- Les `SNPs` correspondent à des variations mineures du génome au sein d'une population. Ils sont très courants,    puisqu'entre deux personnes prises au hasard, on retrouve environ 3 millions de SNP. Si la plupart du temps ces variations sont silencieuses, ou à l'origine de nos différences morphologiques, elles peuvent néanmoins être à l'origine de maladies génétiques, ou de prédispositions à des maladies.
+  
+
+On appelle également `reads` la lecture de l'alignement des séquences de fragment de nucléotides d'un individu, 
+permettant avec le nombre de nucléotides que l'on obtient de décider si on le classe comme `R` ou `V`.  
+  
+Sur l'exemple ci-dessous avec la figure 1, nous avons 10 reads, avec une profondeur de lecture de nucléotides égal à 10 (N = 10).
+Sur ces 10 nucléotides nous en lisons 8 qui sont des nucléotides de référence `R`, et 2 sont des nucléotides variants `V`.   
+
+
+![Schéma de 10 séquences de séquençage de nouvelle génération alignées (R = nucléotide de référence,V = nucléotide variant)](C:\Users\lulu\Documents\M2\S1\Algorithmes stochastiques\fig1.png) 
+
+Dans cette étude, nous commencerons par expliquer le modèle étudié puis nous le simulerons, ensuite nous calculerons la loi à postériori de ce modèle, nous continuerons par l'explication de ce qu'est un algorithme EM et nous l'implémenterons pour notre modèle et nous finirons par une extension à l'algorithme EM.
+
+\newpage
+
+#Le modèle $\mathbb{P}(X,S| \theta)$ ainsi que sa simulation 
+##Le modèle
+Dans le modèle étudié, nous avons les paramètres suivants :  
+
+* $X = (X_i)_{\mbox{i} \in \{1,...,N_i\}}$ représente le nombre de reads `V` au locus pour l'individu $i$ : c'est la variable observée.    
+
+* $N_i \in \mathbb{N}^*$ correspond au nombre de reads au locus pour l'individu $i$.  
+On suppose $N_i$ donné.
+
+* $\alpha$ représente la probabilité de se tromper sur un nucléotide.
+
+* $S=(S_i){\mbox{i} \in \{1,...,n\}}$ avec $S_i \in \{RR,RV,VV\}$ représente le génotype de l'individu $i$ au locus étudié : c'est la variable non observée.  
+On remarquera que dans l'article que l'on étudie, $S_i$ est noté $G_i$.  
+De plus, on note $p_{rr} = \mathbb{P}(S_i = RR)$ , $p_{rv} = \mathbb{P}(S_i = RV)$ et 
+$p_{vv} = \mathbb{P}(S_i = VV)$.  
+  
+Voici la probabilité du nombre de reads "V" ainsi que le génotype de l'individus au locus choisit    
+$\mathbb{P}(X,S) = \prod_i \mathbb{P}(Xi,S_i) = \prod_i \mathbb{P}(S_i) \mathbb{P}(X_i|S_i,N_i)$  
+  
+On a, d'après les informations de l'article, et grâce à l'équilibre de `Hardy Weinberg`, on en déduit que :  
+$\mathbb{P}(S_i=RR)=1-p_{VV}-p_{RV} = p_{RR} = {(1-f)^2}$  
+$\mathbb{P}(S_i=RV)= p_{RV} = {2f(1-f)}$   
+$\mathbb{P}(S_i=VV)= p_{VV} = {f^2}$  
+  
+On définit `*` qui veut dire la probabilité d'obtenir réellement le génotype :  
+
+![](C:\Users\lulu\Documents\M2\S1\Algorithmes stochastiques\RR.png) 
+Donc $X_i|S_i=RR \sim Bin(N_i,\alpha)$  
+  
+![](C:\Users\lulu\Documents\M2\S1\Algorithmes stochastiques\VV.png) 
+Donc $X_i|S_i=VV \sim Bin(N_i,1-\alpha)$  
+  
+![](C:\Users\lulu\Documents\M2\S1\Algorithmes stochastiques\RV.png)
+Donc $X_i|S_i=RV \sim Bin(N_i,\frac{1}{2})$   
+
+
+
+
+##Simulation 
+On simule donc le génotype en choissant un $\alpha = 0.15$, on considère `f` la fréquence du génotype `VV` tel que $f_{VV}=0.2$ ainsi $p_{VV}=(0.20)^2 = 0.04$
+
+```{r, echo = FALSE}
+set.seed(12345)
+# simulation
+n=2000
+alpha=0.15
+#ordre RR:0 RV:1 VV:2
+#parametre arbitraire
+#p=c(0.80,0.15,0.05)
+#avec Hardy-Weinberg
+f=0.20; p=c((1-f)^2,2*f*(1-f),f^2)
+#Choix irrealiste de Ni
+#N=rep(25,n)
+#Choix plus realiste
+N=rpois(n,lambda=20)
+
+s=sample(c("RR","RV","VV"),size=n,prob=p,replace=TRUE)
+```
+ 
+On compare nos estimations :
+```{r, echo=FALSE}
+# verification simple
+tab=rbind(table(s),table(s)/n,p)
+rownames(tab)=c("counts","estimate","true p")
+knitr::kable(tab,format="markdown")
+```
+Table: Estimation et comparaison de la proportion des génotypes simulés avec les vraies proportions de génotypes.  
+
+Sur les 2000 nucléotides que nous obtenons, on compte 1303 homozygotes référents, 625 hétérozygotes et 72 homozygotes variants. Les données que nous simulons donnent les proportions suivantes :  65.15% homozygotes référents, 31.25% d'hétérozygotes, et 3.6% d'homozygotes variants. Ces simulations sont très proches des vraies proportions : $p_{RR} = 0.64$, $p_{RV} = 0.32$ et $p_{VV} = 0.04$.  
+D'après le tableau ci-dessus, on peut dire que nos estimations sont proches des vraies proportions de chaque nucléotides dans notre échantillon.   
+D'après la figure 2 ci-dessous, on peut voir d'après la simulation de ce mélange gaussien qu'il y a une plus forte dispersion chez les hétérozygotes `RV` que chez les homozygotes `RR` et `VV`.  
+L'identification des classes ne sera pas aisée en conséquence de ces dispersions plus ou moins forte dans chacunes de ces classes.
+
+```{r, echo = FALSE}
+x=rep(NA,n)
+idx=(s=="RR")
+x[idx]=rbinom(n=sum(idx),size=N[idx],prob=alpha)
+
+idx=(s=="RV")
+x[idx]=rbinom(n=sum(idx),size=N[idx],prob=0.5)
+
+idx=(s=="VV")
+x[idx]=rbinom(n=sum(idx),size=N[idx],prob=1-alpha)
+```
+
+```{r,echo=FALSE, fig.height=4, fig.width=6}
+# verification
+col=as.numeric(as.factor(s))
+plot(x/N,col=col,pch=col)
+legend("bottomright",c("RR","RV","VV"),pch=1:3,col=1:3,bg="white")
+```
+  
+Figure 2 : le ratio Xi/N en ordonné pour la simulation avec 25 de profondeur de lecture et 15% de taux d'erreur. La couleur correspond au vrai genotype.  
+
+\newpage
+#Loi a posteriori $\mathbb{P}(S | X; \theta^{old})$  
+On est dans le cas d'un mélange, en effet nous avons trois lois `binomiales` différentes.  
+  
+On a : $\mathbb{P}(S_i = j| X_i,N_i,\theta^{old}) = \eta_i(j)$  
+  
+Et donc les $\eta_i(j)$ se définissent par :  
+
+* $\eta_i(RR) \propto p_{RR} \times \mbox{dbinom}(X_i,N_i,\alpha)$  
+
+* $\eta_i(RV) \propto p_{RV} \times \mbox{dbinom}(X_i,N_i,\frac{1}{2})$    
+
+* $\eta_i(VV) \propto p_{VV} \times \mbox{dbinom}(X_i,N_i,1-\alpha)$  
+  
+  
+En utilisant les données génerées à la section précedente, nous simulons la loi à posteriori.
+```{r,echo=FALSE}
+eta=cbind(
+  p[1]*dbinom(x,size=N,prob=alpha), # RR
+  p[2]*dbinom(x,size=N,prob=0.5), # RV
+  p[3]*dbinom(x,size=N,prob=1-alpha) # VV
+)
+
+loglik=sum(log(apply(eta,1,sum)))
+
+eta=eta/apply(eta,1,sum)
+#head(eta)
+
+spred=apply(eta,1,which.max)
+tab=table(as.numeric(as.factor(s)),spred)
+colnames(tab)=c("RR","RV","VV")
+rownames(tab)=c("RR*","RV*","VV*")
+knitr::kable(tab,format="markdown")
+```
+
+Table: Table de contingence représentant le nombre de génotypes observés (en lignes) en fonction des vrais génotypes (en colonne).
+
+A l'aide la table 2, nous affichons le nombre des génotypes à postériori en fonction du nombre de génotype à priori (avec *).  
+On remarque que sur 1303 `RR` à priori (d'après la table1), nous obtenons 1268 `RR` à postériori.  
+De la même façon, on voit que sur 625 `RV` à priori, nous obtenons 578 `RV` à postériori.  
+Et sur 72 `VV` à priori, nous obtenons 66 `VV` à postériori.  
+Il y a donc 3% de chance de se tromper pour le génotype `RR`, 7% pour le génotype `RV` et 8% de chance pour le génotype `VV` : ce qui paraît assez faible.  
+
+On trace maintenant trois boxplots qui représentent nos trois différents génotypes estimés (à postériori) en fonction du vrai génotype (à priori). Ils représentent tous les trois la table 2.   
+  
+  
+```{r, echo=FALSE,fig.height=3,fig.width=8}
+eta_data = data.frame('RR'=eta[,1], 'RV'= eta[,2], 'VV' = eta[,3])
+
+ggplot(eta_data)+
+  geom_boxplot(aes(y = RR, x = s, fill = s)) + 
+  labs(x = "", y = "") + 
+  ggtitle('Boxplots des génotypes RR, RV et VV (estimés) en fonction du vrai génotype RR')
+
+ggplot(eta_data)+
+  geom_boxplot(aes(y = RV, x = s, fill = s)) + 
+  labs(x = "", y = "") + 
+  ggtitle('Boxplots des génotypes RR, RV et VV (estimés) en fonction du vrai génotype RV')
+
+ggplot(eta_data)+
+  geom_boxplot(aes(y = VV, x = s, fill = s)) + 
+  labs(x = "", y = "") + 
+  ggtitle('Boxplots des génotypes RR, RV et VV (estimés) en fonction du vrai génotype VV')
+```
+Figure 3: Boxplots des différents génotypes estimés (à postériori) en fonction du vrai génotype (à priori).  
+
+#Algorithme EM et maximisation de $Q(\theta | \theta{old})$  
+##Algorithme EM
+L'algorithme EM (espérence-maximisation) est une méthode d'estimation paramétrique qui s'inscrit dans le cadre général du maximum de vraisemblance. Il peut être utilisé pour la classification de données ou encore le machine learning.  
+
+Il consiste à :   
+
+* une étape d'évaluation de l'espérance (E), où l'on calcule l'espérance de la vraisemblance en tenant compte des dernières variables observées  
+
+* une étape de maximisation (M), où l'on estime le maximum de vraisemblance des paramètres en maximisant la vraisemblance trouvée à l'étape E
+
+On utilise ensuite les paramètres trouvés en M comme point de départ d'une nouvelle phase d'évaluation de l'espérance, et l'on itère ainsi.  
+  
+##Maximisation de Q    
+On cherche à calculer la fonction `Q` de l'algorithme EM avec les notations suivantes : 
+$$
+SS_j=\sum_i \eta_i(j) \quad
+XX_j=\sum_i \eta_i(j) x_i \quad
+NN_j=\sum_i \eta_i(j) N_i
+$$
+De plus, on décide de mettre dans une constante, tout ce qui ne concerne pas $\alpha$ et $f$.
+\begin{align*}
+Q(\theta|\theta^{old}) = \sum_i \sum_j \mathbb{P}(S_i=j|X_i,N_i,\theta^{old}) \times log[\mathbb{P}(X_i,S_i=j|N_i,\theta)] \\
+= \sum_i \eta_i(RR)log[(1-f)^2 {N_i\choose X_i} \alpha^{X_i} (1-\alpha)^{N_i-X_i}]
++ \sum_i\eta_i(RV)log[2f(1-f) {N_i\choose X_i} (\frac{1}{2})^{X_i} (\frac{1}{2})^{N_i-X_i}] \\
++ \sum_i \eta_i(VV)log[f^2 {N_i\choose X_i} (1-\alpha)^{X_i} \alpha^{N_i-X_i}] \\
+= \text{cst.} +(SS_{RV}+2 SS_{VV})log(f) + (2 SS_{RR}+SS_{RV})log(1-f) + (XX_{RR}+NN_{VV}-XX_{VV}) log(\alpha)\\
++ (XX_{VV}+NN_{RR}-XX_{RR}) log(1-\alpha)
+\end{align*}
+
+
+En posant : 
+$$
+A = SS_{RV}+2 SS_{VV} \quad
+B = 2 SS_{RR}+SS_{RV} \quad
+C = XX_{RR}+NN_{VV}-XX_{VV} \quad 
+D = XX_{VV}+NN_{RR}-XX_{RR}
+$$
+
+On peut réécrire `Q` comme ce qui suit :
+$$Q(\theta|\theta^{old}) = \mbox{cste} + log(f)A+log(1-f)B + log(\alpha)C+log(1-\alpha)D$$
+Et donc, on obtient comme estimateur pour $\alpha$ et $f$ :  
+$\hat{f} = \frac{A}{A+B}$  
+
+$\hat{\alpha} = \frac{C}{C+D}$
+
+##Implémentation de l'algorithme EM pour notre modèle
+Nous implémentons maintenant l'algorithme EM pour notre modèle avec comme paramètre $\alpha = 0.10$ et $f = 0.10$.
+```{r, echo = FALSE}
+theta_star=list(alpha=alpha,p=p)
+# initialization
+alpha=0.10
+f=0.10
+# boucle principale
+for (iter in 1:50) {
+  p=c((1-f)^2,2*f*(1-f),f^2)
+  # E-step
+  eta=cbind(
+    p[1]*dbinom(x,size=N,prob=alpha), # RR
+    p[2]*dbinom(x,size=N,prob=0.5), # RV
+    p[3]*dbinom(x,size=N,prob=1-alpha) # VV
+  )
+  loglik=sum(log(apply(eta,1,sum)))
+  # verbose
+  #cat("iter=",iter,"loglik=",loglik,"f=",f,"alpha=",alpha,"\n")
+  eta=eta/apply(eta,1,sum)
+  # sufficient statistics
+  NN=apply(eta*N,2,sum)
+  XX=apply(eta*x,2,sum)
+  SS=apply(eta,2,sum)
+  # M-step
+  alpha=(XX[1]+NN[3]-XX[3])/(NN[1]+NN[3])
+  f=(SS[2]+2*SS[3])/(2*n)
+}
+theta=list(alpha=alpha,p=p)
+tab = rbind(unlist(theta_star),unlist(theta))
+colnames(tab)=c("alpha","prr","prv", "pvv")
+rownames(tab)=c("thetastar","theta")
+knitr::kable(tab,format="markdown")
+```
+Table: Résultat de l'algorithme EM à 50 itérations.
+
+D'après la table 3, on remarque que pour 50 itérations les valeurs des paramètres estimés $\theta$ approchent très convenablement les vraies valeurs de $\theta^*$. Il est intéressant de noter que l'agorithme converge très vite vers les bonnes valeurs à estimer, qui indique que l'algorithme EM est efficace pour prédire les variable cachées.
+L'approche de manière pragmatique permet de voir dans la table 3 que les choix de départ pour $\theta^* = (f^*,\alpha^*)$ sont sensiblement proches du vrai $\theta = (f,\alpha)$ mais cela ne témoigne pas d'une généralité. Ici nous avons vu que l'algorithme EM était bon mais nous allons essayer de vérifier si les résultats obtenus sont effectivement interpratables.
+
+#Extension
+Après avoir construit l'algorithme EM on a pu convenir qu'il fallait un peu moins d'une cinquantaine de valeur pour que nos estimations de $\theta^*$ convergent vers la bonne valeur de notre estimateur $\theta$.  
+Dans cette partie on a construit à partir des $X{i}$ des échantillons bootsrap.  
+
+```{r,echo= FALSE}
+#Création des échantillons bootstrap
+
+donneesX = as.matrix(x = x)
+
+bootmatrix <- function(x, R){ #Fonction boostrap qui génère R échantillons
+                bm <- c()
+                
+                for(i in 1:R){
+                  bm <- cbind(bm, sample(x = x, size = length(x), replace = T))
+                }
+                return(bm)
+}
+
+boot = as.data.frame(bootmatrix(donneesX, 500)) #Boot un df contenant 500 séries calquée sur X
+attach(boot)
+head(boot[,1:5])
+dim(boot)
+```
+
+On observe 500 échantillons bootstrap $Y{i}$ pour $i=(1,..,n)$ contenant 2000 observations(chaque variables représentant un échantillon), on va visuellement s'intéresser à leurs comportements.
+
+```{r,echo=FALSE, warning = FALSE, fig.height=4, fig.width=5}
+col_moy = apply(boot,2,mean)
+hist(col_moy, col = rainbow(5), main = "Histogramme des moyennes des 500 échantillons")
+abline(v = mean(x), col = "black", lwd = 4)
+legend('topright',legend = 'Moyenne des X',col = "black",fill = T)
+```
+  
+Figure 4: Histogramme des moyenes des 500 échantillons.  
+
+D'après  la figure 4, l'allure de la courbe est gaussienne sur des valeurs centrées autour de $\overline{X}$.
+Les $\overline{Y{i}}$ étant vraiment semblables à $\overline{X}$ cela amène à construire un intervalle de confiance pour la moyenne des échantillons de niveau de confiance $\alpha$=0.05%:
+
+```{r, echo=FALSE, warning = FALSE}
+meanbootCI <- function(x,alpha,R){ #intervalle de confiance 1-alpha de la moyenne des échant.
+  bm <- bootmatrix(x,R)
+  means <- apply(bm,2,mean) 
+  sortedmeans <- sort(means)
+  q1 <- round(R*alpha/2) 
+  q2 <- round(R*(1-alpha/2))
+  return(c(sortedmeans[q1],sortedmeans[q2])) #intervalle de confiance
+} 
+
+meanbootCI(donneesX,.05,500)
+mean(x)
+```
+
+On lit sur la sortie un intervalle de confiance à 95%, $IC=[5.5610;5.9425]$ ainsi que $\overline{X} =  5.748$ à l'intérieur de l'intervalle puisque nous avons logiquement vu que les valeurs étaient centrées sur $\overline{X}$.  
+Un premier pas dans la démarche d'interprétations des résultats.  
+Procédons donc à l'algorithme EM pour essayer de prédire les bonnes valeurs de $\theta = (f,\alpha)$ avec un $Y{i}$ pour $i=22$ :  
+
+```{r, echo = FALSE, warning = FALSE}
+alpha = 0.15
+f=0.20; p=c((1-f)^2,2*f*(1-f),f^2)
+theta_star2=list(alpha=alpha,p=p)
+
+# initialization
+e = 10^-15
+alpha=0.10
+f=0.10
+p=c((1-f)^2,2*f*(1-f),f^2)
+# boucle principale
+for (iter in 1:50) {
+  # E-step
+  eta=cbind(
+    p[1]*dbinom(boot$V22,size=N,prob=alpha), # RR
+    p[2]*dbinom(boot$V22,size=N,prob=0.5), # RV
+    p[3]*dbinom(boot$V22,size=N,prob=1-alpha) # VV
+  )
+  
+  eta = eta[which(rowSums(eta) > e), ]
+  loglik=sum(log(apply(eta,1,sum)))
+  # verbose
+  #cat("iter=",iter,"loglik=",loglik,"f=",f,"alpha=",alpha,"\n")
+  eta=eta/apply(eta,1,sum)
+  # sufficient statistics
+  NN=apply(eta*N,2,sum)
+  XX=apply(eta*boot$V22,2,sum)
+  SS=apply(eta,2,sum)
+  # M-step
+  alpha=(XX[1]+NN[3]-XX[3])/(NN[1]+NN[3])
+  f=(SS[2]+2*SS[3])/(2*n)
+}
+theta2=list(alpha=alpha,p=p)
+tab = rbind(unlist(theta_star2),unlist(theta2))
+colnames(tab)=c("alpha","prr","prv", "pvv")
+rownames(tab)=c("thetastar","theta")
+knitr::kable(tab,format="markdown")
+cat("iter=",iter,"loglik=",loglik,"f=",f,"alpha=",alpha,"\n")
+```
+
+Après avoir effectué l'algorithme, on constate une nouvelle fois qu'il converge très rapidement vers $\theta=(f,\alpha)$ pour un même nombre d'itérations. Pour un $\alpha^* = 0.15$ et $f^*= 0.20$ choisi de la même manière que pour le 1er algorithme, on en a ressorti $\alpha^* = 0.30$ et $f^* = 0.11$.  
+Toutefois pour éviter les erreurs de calculs, les $\eta{i} < \epsilon$ avec $\epsilon = 10^-15$ ont étés retirés de l'experience.  
+On voit donc bien que l'algorithme est toujours aussi efficace et se revèle donc un bon moyen pour expliquer $S$.
+Cela convient donc à dire que les résultats fournis par l'algorithme EM sont interprétables et se révèle efficace pour déterminer sur chaque locus quels sont les SNPs variant à l'aide d'outils prédictibles bons.
+
+
+#Conclusion
+Dans l'ensemble de cette atricle, le but principal étant après lecture biochimique (avec une profondeur de lecture $N = 10$) de déterminer les SNPs afin de prédire le nombre d'acides aminées variants qui determinera le genotype de l'individu $i$.  
+Cette problématique a necéssité la construction d'un algorithme EM dans la cadre d'un modèle de mélange afin d'estimer les paramètres $\theta = (f,\alpha)$ résultant du calcul de $Q(\theta|\theta^{old})$ à partir de $\theta^* = (f^*,\alpha^*)$.  
+Suite à la construction de l'algorithme nous avons lancé l'expérience pour prédire $S$ et avions constaté qu'il fonctionnait bien et très vite pour estimer nos $\theta$. Une fois cela fait on a procédé à un verification de nos résultats grâce à la méthode du bootstrap pour savoir si notre algorithme produisait un résultat interpretable et avons vu qu'il etait bon.  
+Dans une partie exploratoire, il serait vraiment intéressant de voir l'effet de $X$ sur $S$ en effectuant une validation croisée pour estimer le nombre d'itérations qui minimise le MSE (mean square error) tout en optimisant son nombre d'itérations.  
+
+#Références
+*Martin, Eden R, D D Kinnamon, Michael A Schmidt, E H Powell, S Zuchner, and R W Morris. 2010. “SeqEM: an adaptive genotype-calling approach for next-generation sequencing studies.” Bioinformatics 26 (22). Oxford University Press: 2803–10.*
